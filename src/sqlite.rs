@@ -1,6 +1,11 @@
+use std::{
+    env::temp_dir,
+    fs::{self, File}, path::PathBuf,
+};
+
 use sqlx::{
     migrate::{MigrationSource, Migrator},
-    Connection, SqliteConnection, SqlitePool,
+    Connection, SqliteConnection, SqlitePool, ConnectOptions, Sqlite, sqlite::SqliteConnectOptions,
 };
 use std::{path::Path, thread};
 use tokio::runtime::Runtime;
@@ -14,14 +19,20 @@ impl TestSqlite {
         S: MigrationSource<'static> + Send + Sync + 'static,
     {
         let tdb = Self {};
-        let url = tdb.url();
-
-        // create database dbname
+        // remove temp db if exists
+        let db_file = Self::db_temp_file();
+        if db_file.exists() {
+            if db_file.is_dir() {
+                fs::remove_dir_all(&db_file).unwrap();
+            } else {
+                fs::remove_file(&db_file).unwrap();
+            }
+        }
         thread::spawn(move || {
             let rt = Runtime::new().unwrap();
             rt.block_on(async move {
-                // now connect to test database for migration
-                let mut conn = SqliteConnection::connect(&url).await.unwrap();
+                // connect to test database for migration
+                let mut conn = SqliteConnection::connect_with(&Self::option()).await.unwrap();
                 let m = Migrator::new(migrations).await.unwrap();
                 m.run(&mut conn).await.unwrap();
             });
@@ -32,12 +43,20 @@ impl TestSqlite {
         tdb
     }
 
-    pub fn url(&self) -> String {
-        "sqlite::memory:".to_owned()
+    fn db_temp_file() -> PathBuf {
+        let dir = temp_dir();
+        let db_file = dir.join("sqlx-db-tester.db");
+        db_file
+    }
+
+    fn option() -> SqliteConnectOptions {
+        SqliteConnectOptions::new()
+            .filename(Self::db_temp_file())
+            .create_if_missing(true)
     }
 
     pub async fn get_pool(&self) -> SqlitePool {
-        SqlitePool::connect(&self.url()).await.unwrap()
+        SqlitePool::connect_with(Self::option()).await.unwrap()
     }
 }
 
@@ -66,7 +85,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(id, 1);
+        assert_eq!(id, 0);
         assert_eq!(title, "test");
     }
 }
