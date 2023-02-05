@@ -1,11 +1,9 @@
-use std::{
-    env::temp_dir,
-    fs::{self, File}, path::PathBuf,
-};
+use std::{env::temp_dir, fs, path::PathBuf};
 
 use sqlx::{
     migrate::{MigrationSource, Migrator},
-    Connection, SqliteConnection, SqlitePool, ConnectOptions, Sqlite, sqlite::SqliteConnectOptions,
+    sqlite::SqliteConnectOptions,
+    Connection, SqliteConnection, SqlitePool,
 };
 use std::{path::Path, thread};
 use tokio::runtime::Runtime;
@@ -32,7 +30,9 @@ impl TestSqlite {
             let rt = Runtime::new().unwrap();
             rt.block_on(async move {
                 // connect to test database for migration
-                let mut conn = SqliteConnection::connect_with(&Self::option()).await.unwrap();
+                let mut conn = SqliteConnection::connect_with(&Self::option())
+                    .await
+                    .unwrap();
                 let m = Migrator::new(migrations).await.unwrap();
                 m.run(&mut conn).await.unwrap();
             });
@@ -44,9 +44,7 @@ impl TestSqlite {
     }
 
     fn db_temp_file() -> PathBuf {
-        let dir = temp_dir();
-        let db_file = dir.join("sqlx-db-tester.db");
-        db_file
+        temp_dir().join("sqlx-db-tester.db")
     }
 
     fn option() -> SqliteConnectOptions {
