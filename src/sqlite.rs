@@ -60,7 +60,7 @@ impl TestSqlite {
 
 impl Default for TestSqlite {
     fn default() -> Self {
-        Self::new(Path::new("./migrations"))
+        Self::new(Path::new("./fixtures/migrations"))
     }
 }
 
@@ -72,7 +72,6 @@ mod tests {
     async fn test_sqlite_should_create_and_drop() {
         let tdb = TestSqlite::default();
         let pool = tdb.get_pool().await;
-        println!("!!!");
         // insert todo
         sqlx::query("INSERT INTO todos (title) VALUES ('test')")
             .execute(&pool)
