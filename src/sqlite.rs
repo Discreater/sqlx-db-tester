@@ -9,14 +9,13 @@ use std::{path::Path, thread};
 use tokio::runtime::Runtime;
 
 #[derive(Debug)]
-pub struct TestSqlite;
+pub struct TestSqlite(SqlitePool);
 
 impl TestSqlite {
-    pub fn new<S>(migrations: S) -> Self
+    pub async fn new<S>(migrations: S) -> Self
     where
         S: MigrationSource<'static> + Send + Sync + 'static,
     {
-        let tdb = Self {};
         // remove temp db if exists
         let db_file = Self::db_temp_file();
         if db_file.exists() {
@@ -26,21 +25,11 @@ impl TestSqlite {
                 fs::remove_file(&db_file).unwrap();
             }
         }
-        thread::spawn(move || {
-            let rt = Runtime::new().unwrap();
-            rt.block_on(async move {
-                // connect to test database for migration
-                let mut conn = SqliteConnection::connect_with(&Self::option())
-                    .await
-                    .unwrap();
-                let m = Migrator::new(migrations).await.unwrap();
-                m.run(&mut conn).await.unwrap();
-            });
-        })
-        .join()
-        .expect("failed to create database");
-
-        tdb
+        let mut pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        
+        let m = Migrator::new(migrations).await.unwrap();
+        m.run(&pool).await.unwrap();
+        Self(pool)
     }
 
     fn db_temp_file() -> PathBuf {
@@ -53,14 +42,12 @@ impl TestSqlite {
             .create_if_missing(true)
     }
 
-    pub async fn get_pool(&self) -> SqlitePool {
-        SqlitePool::connect_with(Self::option()).await.unwrap()
+    pub fn get_pool(self) -> SqlitePool {
+        self.0
     }
-}
 
-impl Default for TestSqlite {
-    fn default() -> Self {
-        Self::new(Path::new("./fixtures/migrations"))
+    pub async fn default() -> Self {
+        Self::new(Path::new("./fixtures/migrations")).await
     }
 }
 
@@ -70,8 +57,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_sqlite_should_create_and_drop() {
-        let tdb = TestSqlite::default();
-        let pool = tdb.get_pool().await;
+        let tdb = TestSqlite::default().await;
+        let pool = tdb.get_pool();
         // insert todo
         sqlx::query("INSERT INTO todos (title) VALUES ('test')")
             .execute(&pool)
